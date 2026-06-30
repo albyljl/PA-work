@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import colorchooser, messagebox
 
-from figuras import Linha, Retangulo, Oval, Poligono
+from figuras import Linha, Retangulo, Oval, Poligono, Borracha
 
 
 ini_x = None
@@ -49,6 +49,21 @@ def atualiza_fim(event):
 
         ini_x = event.x
         ini_y = event.y
+
+    elif ferramenta == "borracha":
+        borracha = Borracha(
+            ini_x,
+            ini_y,
+            event.x,
+            event.y,
+            espessura * 2
+        )
+
+        borracha.desenhar(canvas)
+        figuras.append(borracha)
+
+        ini_x = event.x
+        ini_y = event.y        
 
     elif ferramenta == "retangulo":
         if item_temp:
@@ -255,6 +270,17 @@ def atualiza_espessura(v):
     espessura = int(v)
 
 
+def limpar_tudo():
+    global pontos_poligono, itens_temp_poligono, item_temp
+
+    canvas.delete("all")
+    figuras.clear()
+
+    pontos_poligono = []
+    itens_temp_poligono = []
+    item_temp = None
+
+
 root = tk.Tk()
 root.title("Desenho")
 
@@ -269,7 +295,8 @@ for texto, valor in [
     ("Mão livre", "livre"),
     ("Retângulo", "retangulo"),
     ("Oval", "oval"),
-    ("Polígono", "poligono")
+    ("Polígono", "poligono"),
+    ("Borracha", "borracha")
 ]:
     tk.Radiobutton(
         painel,
@@ -284,6 +311,12 @@ tk.Button(
     painel,
     text="Finalizar polígono",
     command=finalizar_poligono
+).pack(anchor=tk.W, pady=(5, 0))
+
+tk.Button(
+    painel,
+    text="Apagar tudo",
+    command=limpar_tudo
 ).pack(anchor=tk.W, pady=(5, 0))
 
 tk.Label(painel, text="Borda", bg="#f0f0f0").pack(anchor=tk.W, pady=(10, 0))
