@@ -46,8 +46,8 @@ class PainelUsuario:
             command=self.controlador.alterar_grossura
         ).pack(anchor=tk.W)
 
-        self.quadro_desenho = tk.Canvas(self.root, bg="white", width=600, height=600)
-        self.quadro_desenho.pack(side=tk.LEFT)
+        self.quadro_desenho = tk.Canvas(self.root, bg="white")
+        self.quadro_desenho.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.quadro_desenho.bind("<ButtonPress-1>", self.controlador.iniciar_clique)
         self.quadro_desenho.bind("<B1-Motion>", self.controlador.arrastar_mouse)
