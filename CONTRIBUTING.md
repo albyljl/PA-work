@@ -5,9 +5,5 @@
 - levi: adequação do codigo com ciraçõa e calsses e adiçao da função borracha
 
 #tarefa 3
-- marcos: organização do codigo de acordo e aplicação do padrão MVC, definindo a classe visao, modelo e controlador
-
-#tarefa 4
--Albert: alteração para padrão state e implementação do json para salvar os desenhos
-
+- marcos: organização do codigo de acordo e aplicação do padrão MVC, definindo a classe visao, modelo e controlador  
 

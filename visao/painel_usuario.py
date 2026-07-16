@@ -31,6 +31,12 @@ class PainelUsuario:
         tk.Button(self.barra_lateral, text="Concluir Polígono", command=self.controlador.fechar_poligono).pack(anchor=tk.W, pady=(6, 0))
         tk.Button(self.barra_lateral, text="Limpar Tela", command=self.controlador.resetar_painel).pack(anchor=tk.W, pady=(6, 0))
 
+        # --- SEÇÃO DE ARQUIVOS (JSON / IMAGEM) QUE ESTAVA FALTANDO ---
+        tk.Label(self.barra_lateral, text="Arquivo:", bg="#f5f5f5").pack(anchor=tk.W, pady=(12, 0))
+        tk.Button(self.barra_lateral, text="Salvar", command=self.controlador.salvar_desenho_json, bg="#f5f5f5").pack(anchor=tk.W, pady=(3, 0))
+        tk.Button(self.barra_lateral, text="Abrir", command=self.controlador.abrir_desenho_json, bg="#f5f5f5").pack(anchor=tk.W, pady=(3, 0))
+        
+
         tk.Label(self.barra_lateral, text="Organizar:", bg="#f5f5f5").pack(anchor=tk.W, pady=(12, 0))
         tk.Button(self.barra_lateral, text="Trazer para Frente", command=self.controlador.trazer_para_frente).pack(anchor=tk.W, pady=(3, 0))
         tk.Button(self.barra_lateral, text="Mandar para Trás", command=self.controlador.mandar_para_tras).pack(anchor=tk.W, pady=(3, 0))
@@ -51,7 +57,6 @@ class PainelUsuario:
             command=self.controlador.alterar_grossura
         ).pack(anchor=tk.W)
 
-        # Configurado para expandir e ocupar toda a tela cheia
         self.quadro_desenho = tk.Canvas(self.root, bg="white")
         self.quadro_desenho.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
