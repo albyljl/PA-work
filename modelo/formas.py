@@ -1,96 +1,25 @@
 from abc import ABC, abstractmethod
-import math
-
-
-class TipoFormaDesconhecido(ValueError):
-    pass
 
 class FormaGeometrica(ABC):
     def __init__(self, tracejado, preenchimento="", largura=2):
         self.tracejado = tracejado
         self.preenchimento = preenchimento
         self.largura = largura
+        self.selecionada = False
 
     @abstractmethod
     def renderizar(self, tela):
-        pass
-
-    @property
-    @abstractmethod
-    def tipo(self):
-        pass
-
-    @abstractmethod
-    def mover(self, dx, dy):
         pass
 
     @abstractmethod
     def contem_ponto(self, x, y):
         pass
 
-    def _atributos_estilo(self):
-        return {
-            "tracejado": self.tracejado,
-            "preenchimento": self.preenchimento,
-            "largura": self.largura,
-        }
-
     @abstractmethod
-    def para_dicionario(self):
+    def mover(self, dx, dy):
         pass
 
-    @classmethod
-    def de_dicionario(cls, dados):
-        tipo = dados.get("tipo")
-        formas = {
-            Traco.tipo: Traco,
-            Raspador.tipo: Raspador,
-            Quadro.tipo: Quadro,
-            Elipse.tipo: Elipse,
-            FormatoMultiplo.tipo: FormatoMultiplo,
-        }
-        try:
-            forma_cls = formas[tipo]
-        except KeyError as exc:
-            raise TipoFormaDesconhecido(f"Tipo de forma desconhecido: {tipo}") from exc
-        return forma_cls.de_dicionario(dados)
-
-
-def _distancia_ponto_segmento(px, py, ax, ay, bx, by):
-    dx = bx - ax
-    dy = by - ay
-    if dx == 0 and dy == 0:
-        return math.hypot(px - ax, py - ay)
-
-    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
-    t = max(0, min(1, t))
-    proj_x = ax + t * dx
-    proj_y = ay + t * dy
-    return math.hypot(px - proj_x, py - proj_y)
-
-
-def _normalizar_retangulo(xa, ya, xb, yb):
-    return min(xa, xb), min(ya, yb), max(xa, xb), max(ya, yb)
-
-
-def _ponto_em_poligono(x, y, pontos):
-    dentro = False
-    total = len(pontos)
-    j = total - 1
-    for i in range(total):
-        xi, yi = pontos[i]
-        xj, yj = pontos[j]
-        cruza = (yi > y) != (yj > y)
-        if cruza:
-            x_intersecao = (xj - xi) * (y - yi) / (yj - yi) + xi
-            if x < x_intersecao:
-                dentro = not dentro
-        j = i
-    return dentro
-
 class Traco(FormaGeometrica):
-    tipo = "traco"
-
     def __init__(self, xa, ya, xb, yb, tracejado, largura=2):
         super().__init__(tracejado, "", largura)
         self.xa = xa
@@ -99,13 +28,26 @@ class Traco(FormaGeometrica):
         self.yb = yb
 
     def renderizar(self, tela):
+        cor = "blue" if self.selecionada else self.tracejado
+        larg = self.largura + 2 if self.selecionada else self.largura
         tela.create_line(
             self.xa, self.ya, self.xb, self.yb,
-            fill=self.tracejado,
-            width=self.largura,
+            fill=cor,
+            width=larg,
             capstyle="round",
             joinstyle="round"
         )
+
+    def contem_ponto(self, x, y):
+        margem = 5
+        xmin, xmax = min(self.xa, self.xb) - margem, max(self.xa, self.xb) + margem
+        ymin, ymax = min(self.ya, self.yb) - margem, max(self.ya, self.yb) + margem
+        if not (xmin <= x <= xmax and ymin <= y <= ymax):
+            return False
+        dist = abs((self.yb - self.ya) * x - (self.xb - self.xa) * y + self.xb * self.ya - self.yb * self.xa) / (
+            ((self.yb - self.ya) ** 2 + (self.xb - self.xa) ** 2) ** 0.5 or 1
+        )
+        return dist <= margem
 
     def mover(self, dx, dy):
         self.xa += dx
@@ -113,28 +55,7 @@ class Traco(FormaGeometrica):
         self.xb += dx
         self.yb += dy
 
-    def contem_ponto(self, x, y):
-        tolerancia = max(4, self.largura / 2)
-        return _distancia_ponto_segmento(x, y, self.xa, self.ya, self.xb, self.yb) <= tolerancia
-
-    def para_dicionario(self):
-        dados = {
-            "tipo": self.tipo,
-            "xa": self.xa,
-            "ya": self.ya,
-            "xb": self.xb,
-            "yb": self.yb,
-        }
-        dados.update(self._atributos_estilo())
-        return dados
-
-    @classmethod
-    def de_dicionario(cls, dados):
-        return cls(dados["xa"], dados["ya"], dados["xb"], dados["yb"], dados["tracejado"], dados.get("largura", 2))
-
 class Raspador(FormaGeometrica):
-    tipo = "raspador"
-
     def __init__(self, xa, ya, xb, yb, largura=10):
         super().__init__("white", "", largura)
         self.xa = xa
@@ -145,38 +66,22 @@ class Raspador(FormaGeometrica):
     def renderizar(self, tela):
         tela.create_line(
             self.xa, self.ya, self.xb, self.yb,
-            fill=self.tracejado,
+            fill="white",
             width=self.largura,
             capstyle="round",
             joinstyle="round"
         )
 
+    def contem_ponto(self, x, y):
+        return False
+
     def mover(self, dx, dy):
         self.xa += dx
         self.ya += dy
         self.xb += dx
         self.yb += dy
-
-    def contem_ponto(self, x, y):
-        return _distancia_ponto_segmento(x, y, self.xa, self.ya, self.xb, self.yb) <= self.largura / 2
-
-    def para_dicionario(self):
-        return {
-            "tipo": self.tipo,
-            "xa": self.xa,
-            "ya": self.ya,
-            "xb": self.xb,
-            "yb": self.yb,
-            "largura": self.largura,
-        }
-
-    @classmethod
-    def de_dicionario(cls, dados):
-        return cls(dados["xa"], dados["ya"], dados["xb"], dados["yb"], dados.get("largura", 10))
 
 class Quadro(FormaGeometrica):
-    tipo = "quadro"
-
     def __init__(self, xa, ya, xb, yb, tracejado, preenchimento="", largura=2):
         super().__init__(tracejado, preenchimento, largura)
         self.xa = xa
@@ -185,12 +90,19 @@ class Quadro(FormaGeometrica):
         self.yb = yb
 
     def renderizar(self, tela):
+        cor_borda = "blue" if self.selecionada else self.tracejado
+        larg = self.largura + 2 if self.selecionada else self.largura
         tela.create_rectangle(
             self.xa, self.ya, self.xb, self.yb,
-            outline=self.tracejado,
+            outline=cor_borda,
             fill=self.preenchimento,
-            width=self.largura
+            width=larg
         )
+
+    def contem_ponto(self, x, y):
+        xmin, xmax = min(self.xa, self.xb), max(self.xa, self.xb)
+        ymin, ymax = min(self.ya, self.yb), max(self.ya, self.yb)
+        return xmin <= x <= xmax and ymin <= y <= ymax
 
     def mover(self, dx, dy):
         self.xa += dx
@@ -198,36 +110,7 @@ class Quadro(FormaGeometrica):
         self.xb += dx
         self.yb += dy
 
-    def contem_ponto(self, x, y):
-        xa, ya, xb, yb = _normalizar_retangulo(self.xa, self.ya, self.xb, self.yb)
-        return xa <= x <= xb and ya <= y <= yb
-
-    def para_dicionario(self):
-        dados = {
-            "tipo": self.tipo,
-            "xa": self.xa,
-            "ya": self.ya,
-            "xb": self.xb,
-            "yb": self.yb,
-        }
-        dados.update(self._atributos_estilo())
-        return dados
-
-    @classmethod
-    def de_dicionario(cls, dados):
-        return cls(
-            dados["xa"],
-            dados["ya"],
-            dados["xb"],
-            dados["yb"],
-            dados["tracejado"],
-            dados.get("preenchimento", ""),
-            dados.get("largura", 2),
-        )
-
 class Elipse(FormaGeometrica):
-    tipo = "elipse"
-
     def __init__(self, xa, ya, xb, yb, tracejado, preenchimento="", largura=2):
         super().__init__(tracejado, preenchimento, largura)
         self.xa = xa
@@ -236,12 +119,19 @@ class Elipse(FormaGeometrica):
         self.yb = yb
 
     def renderizar(self, tela):
+        cor_borda = "blue" if self.selecionada else self.tracejado
+        larg = self.largura + 2 if self.selecionada else self.largura
         tela.create_oval(
             self.xa, self.ya, self.xb, self.yb,
-            outline=self.tracejado,
+            outline=cor_borda,
             fill=self.preenchimento,
-            width=self.largura
+            width=larg
         )
+
+    def contem_ponto(self, x, y):
+        xmin, xmax = min(self.xa, self.xb), max(self.xa, self.xb)
+        ymin, ymax = min(self.ya, self.yb), max(self.ya, self.yb)
+        return xmin <= x <= xmax and ymin <= y <= ymax
 
     def mover(self, dx, dy):
         self.xa += dx
@@ -249,47 +139,14 @@ class Elipse(FormaGeometrica):
         self.xb += dx
         self.yb += dy
 
-    def contem_ponto(self, x, y):
-        xa, ya, xb, yb = _normalizar_retangulo(self.xa, self.ya, self.xb, self.yb)
-        raio_x = (xb - xa) / 2
-        raio_y = (yb - ya) / 2
-        if raio_x == 0 or raio_y == 0:
-            return False
-        centro_x = xa + raio_x
-        centro_y = ya + raio_y
-        return ((x - centro_x) ** 2) / (raio_x ** 2) + ((y - centro_y) ** 2) / (raio_y ** 2) <= 1
-
-    def para_dicionario(self):
-        dados = {
-            "tipo": self.tipo,
-            "xa": self.xa,
-            "ya": self.ya,
-            "xb": self.xb,
-            "yb": self.yb,
-        }
-        dados.update(self._atributos_estilo())
-        return dados
-
-    @classmethod
-    def de_dicionario(cls, dados):
-        return cls(
-            dados["xa"],
-            dados["ya"],
-            dados["xb"],
-            dados["yb"],
-            dados["tracejado"],
-            dados.get("preenchimento", ""),
-            dados.get("largura", 2),
-        )
-
 class FormatoMultiplo(FormaGeometrica):
-    tipo = "formato_multiplo"
-
     def __init__(self, vertices, tracejado, preenchimento="", largura=2):
         super().__init__(tracejado, preenchimento, largura)
-        self.vertices = [tuple(vertice) for vertice in vertices]
+        self.vertices = vertices
 
     def renderizar(self, tela):
+        cor_borda = "blue" if self.selecionada else self.tracejado
+        larg = self.largura + 2 if self.selecionada else self.largura
         pontos = []
         for px, py in self.vertices:
             pontos.append(px)
@@ -297,32 +154,17 @@ class FormatoMultiplo(FormaGeometrica):
 
         tela.create_polygon(
             pontos,
-            outline=self.tracejado,
+            outline=cor_borda,
             fill=self.preenchimento,
-            width=self.largura
+            width=larg
         )
-
-    def mover(self, dx, dy):
-        self.vertices = [(x + dx, y + dy) for x, y in self.vertices]
 
     def contem_ponto(self, x, y):
-        if len(self.vertices) < 3:
+        if not self.vertices:
             return False
-        return _ponto_em_poligono(x, y, self.vertices)
+        xs = [p[0] for p in self.vertices]
+        ys = [p[1] for p in self.vertices]
+        return min(xs) <= x <= max(xs) and min(ys) <= y <= max(ys)
 
-    def para_dicionario(self):
-        dados = {
-            "tipo": self.tipo,
-            "vertices": [list(vertice) for vertice in self.vertices],
-        }
-        dados.update(self._atributos_estilo())
-        return dados
-
-    @classmethod
-    def de_dicionario(cls, dados):
-        return cls(
-            dados["vertices"],
-            dados["tracejado"],
-            dados.get("preenchimento", ""),
-            dados.get("largura", 2),
-        )
+    def mover(self, dx, dy):
+        self.vertices = [(px + dx, py + dy) for px, py in self.vertices]
