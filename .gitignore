@@ -1,15 +1,7 @@
-# Python
 __pycache__/
 *.py[cod]
-*.pyo
-.env
-venv/
-env/
-.venv/
-
-# Editores
+.pytest_cache/
 .vscode/
 .idea/
-
-# Logs
-*.log
+*.json
+*.eps
