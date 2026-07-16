@@ -14,7 +14,8 @@
 - Marcos: implementação da seleçao de multiplas figuras, adição da opção de copiar e colar as figuras por meio dos comandos ctrl + c e ctrl + v, adição da opção de mover figuras(utilização de ia[gemini])
 
 #tarefa 6
-- Levi: 
+- Levi: implementação as funçoes agrupar e desagrupar em composite
+  
 
 
 
