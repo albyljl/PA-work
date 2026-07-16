@@ -1,7 +1,7 @@
 from abc import ABC
 from tkinter import messagebox
 
-from modelo.formas import Traco, Quadro, Elipse, FormatoMultiplo, Raspador
+from modelo.formas import Elipse, FormatoMultiplo, Quadro, Raspador, Traco
 
 
 class EstadoFerramenta(ABC):
@@ -23,6 +23,8 @@ class EstadoFerramenta(ABC):
     def iniciar_clique(self, event):
         self.controlador.x_start = event.x
         self.controlador.y_start = event.y
+        self.controlador.ultimo_x = event.x
+        self.controlador.ultimo_y = event.y
         self.controlador.objeto_guia = None
 
     def arrastar_mouse(self, event):
@@ -30,6 +32,36 @@ class EstadoFerramenta(ABC):
 
     def soltar_mouse(self, event):
         self.controlador.objeto_guia = None
+
+
+class EstadoSelecionar(EstadoFerramenta):
+    chave = "selecionar"
+
+    def iniciar_clique(self, event):
+        super().iniciar_clique(event)
+        figura = self.controlador.figura_no_ponto(event.x, event.y)
+        shift = bool(event.state & 0x0001)
+
+        if figura is None:
+            if not shift:
+                self.controlador.limpar_selecao()
+        elif shift:
+            self.controlador.alternar_selecao(figura)
+        elif figura not in self.controlador.selecionadas:
+            self.controlador.selecionar_apenas(figura)
+
+        self.controlador.atualizar_tela()
+
+    def arrastar_mouse(self, event):
+        if not self.controlador.selecionadas:
+            return
+        dx = event.x - self.controlador.ultimo_x
+        dy = event.y - self.controlador.ultimo_y
+        for figura in self.controlador.selecionadas:
+            figura.mover(dx, dy)
+        self.controlador.ultimo_x = event.x
+        self.controlador.ultimo_y = event.y
+        self.controlador.atualizar_tela()
 
 
 class EstadoLivre(EstadoFerramenta):
@@ -81,18 +113,19 @@ class EstadoRetangulo(EstadoFerramenta):
         )
 
     def soltar_mouse(self, event):
-        if self.controlador.objeto_guia:
+        if self.controlador.objeto_guia is not None:
             self.controlador.apagar_guia()
-            figura = Quadro(
-                self.controlador.x_start,
-                self.controlador.y_start,
-                event.x,
-                event.y,
-                self.controlador.cor_linha,
-                self.controlador.cor_interna,
-                self.controlador.grossura,
+            self.controlador.adicionar_figura(
+                Quadro(
+                    self.controlador.x_start,
+                    self.controlador.y_start,
+                    event.x,
+                    event.y,
+                    self.controlador.cor_linha,
+                    self.controlador.cor_interna,
+                    self.controlador.grossura,
+                )
             )
-            self.controlador.adicionar_figura(figura)
         super().soltar_mouse(event)
 
 
@@ -112,18 +145,19 @@ class EstadoOval(EstadoFerramenta):
         )
 
     def soltar_mouse(self, event):
-        if self.controlador.objeto_guia:
+        if self.controlador.objeto_guia is not None:
             self.controlador.apagar_guia()
-            figura = Elipse(
-                self.controlador.x_start,
-                self.controlador.y_start,
-                event.x,
-                event.y,
-                self.controlador.cor_linha,
-                self.controlador.cor_interna,
-                self.controlador.grossura,
+            self.controlador.adicionar_figura(
+                Elipse(
+                    self.controlador.x_start,
+                    self.controlador.y_start,
+                    event.x,
+                    event.y,
+                    self.controlador.cor_linha,
+                    self.controlador.cor_interna,
+                    self.controlador.grossura,
+                )
             )
-            self.controlador.adicionar_figura(figura)
         super().soltar_mouse(event)
 
 
@@ -137,10 +171,10 @@ class EstadoPoligono(EstadoFerramenta):
         if not self.controlador.nos_poligono:
             return
         self.controlador.apagar_guia()
-        ux, uy = self.controlador.nos_poligono[-1]
+        x, y = self.controlador.nos_poligono[-1]
         self.controlador.objeto_guia = self.tela.create_line(
-            ux,
-            uy,
+            x,
+            y,
             event.x,
             event.y,
             fill=self.controlador.cor_linha,
@@ -153,17 +187,16 @@ class EstadoPoligono(EstadoFerramenta):
 
     def fechar(self):
         if len(self.controlador.nos_poligono) < 3:
-            messagebox.showwarning("Aviso", "Minimo de 3 pontos exigidos.")
+            messagebox.showwarning("Aviso", "Mínimo de 3 pontos exigidos.")
             return
 
-        self.controlador.apagar_guia()
-        self.controlador.apagar_apoios_poligono()
-
-        figura = FormatoMultiplo(
-            self.controlador.nos_poligono.copy(),
-            self.controlador.cor_linha,
-            self.controlador.cor_interna,
-            self.controlador.grossura,
+        vertices = self.controlador.nos_poligono.copy()
+        self.controlador.resetar_poligono_rascunho()
+        self.controlador.adicionar_figura(
+            FormatoMultiplo(
+                vertices,
+                self.controlador.cor_linha,
+                self.controlador.cor_interna,
+                self.controlador.grossura,
+            )
         )
-        self.controlador.adicionar_figura(figura)
-        self.controlador.nos_poligono = []

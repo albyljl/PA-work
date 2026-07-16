@@ -1,366 +1,312 @@
+from __future__ import annotations
+
 import copy
-import json
-from tkinter import colorchooser, messagebox, filedialog
-from modelo.formas import Traco, Quadro, Elipse, FormatoMultiplo, Raspador
+from tkinter import colorchooser, filedialog, messagebox
+
+from controlador.estados import (
+    EstadoBorracha,
+    EstadoLivre,
+    EstadoOval,
+    EstadoPoligono,
+    EstadoRetangulo,
+    EstadoSelecionar,
+)
+from modelo.documento import DocumentoDesenho
+from modelo.formas import FiguraComposta, FormaGeometrica
+
 
 class GerenteFluxo:
     def __init__(self):
-        self.modo = "livre"
         self.cor_linha = "black"
         self.cor_interna = ""
         self.grossura = 2
-        
-        self.historico = []
-        self.selecionadas = []
-        self.copiadas = []
-        self.pontos_livre = []
-        
+
+        self.documento = DocumentoDesenho()
+        self.selecionadas: list[FormaGeometrica] = []
+        self.copiadas: list[FormaGeometrica] = []
+
         self.x_start = None
         self.y_start = None
         self.ultimo_x = None
         self.ultimo_y = None
         self.objeto_guia = None
-        
         self.nos_poligono = []
         self.graficos_apoio = []
-        
         self.janela_view = None
+
+        estados = [
+            EstadoSelecionar(self),
+            EstadoLivre(self),
+            EstadoRetangulo(self),
+            EstadoOval(self),
+            EstadoPoligono(self),
+            EstadoBorracha(self),
+        ]
+        self.estados = {estado.chave: estado for estado in estados}
+        self.estado_atual = self.estados["livre"]
+        self.modo = self.estado_atual.chave
+
+    @property
+    def historico(self):
+        """Compatibilidade com o nome usado nas entregas anteriores."""
+        return self.documento.figuras
 
     def vincular_view(self, janela_view):
         self.janela_view = janela_view
-        self.janela_view.root.bind("<Delete>", lambda e: self.apagar_selecionadas())
-        self.janela_view.root.bind("<Control-c>", lambda e: self.copiar_selecionadas())
-        self.janela_view.root.bind("<Control-v>", lambda e: self.colar_selecionadas())
+        raiz = self.janela_view.root
+        raiz.bind("<Delete>", lambda _e: self.apagar_selecionadas())
+        raiz.bind("<Control-c>", lambda _e: self.copiar_selecionadas())
+        raiz.bind("<Control-v>", lambda _e: self.colar_selecionadas())
+        raiz.bind("<Control-g>", lambda _e: self.agrupar_selecionadas())
+        raiz.bind("<Control-Shift-G>", lambda _e: self.desagrupar_selecionadas())
+        raiz.bind("<Control-Shift-g>", lambda _e: self.desagrupar_selecionadas())
 
+   
     def iniciar_clique(self, event):
-        self.x_start = event.x
-        self.y_start = event.y
-        self.ultimo_x = event.x
-        self.ultimo_y = event.y
-
-        if self.modo == "selecionar":
-            figura_clicada = None
-            for fig in reversed(self.historico):
-                if fig.contem_ponto(event.x, event.y):
-                    figura_clicada = fig
-                    break
-            
-            shift_pressionado = (event.state & 0x0001)
-            
-            if figura_clicada:
-                if shift_pressionado:
-                    if figura_clicada in self.selecionadas:
-                        figura_clicada.selecionada = False
-                        self.selecionadas.remove(figura_clicada)
-                    else:
-                        figura_clicada.selecionada = True
-                        self.selecionadas.append(figura_clicada)
-                else:
-                    if figura_clicada not in self.selecionadas:
-                        for f in self.selecionadas:
-                            f.selecionada = False
-                        figura_clicada.selecionada = True
-                        self.selecionadas = [figura_clicada]
-            else:
-                if not shift_pressionado:
-                    for f in self.selecionadas:
-                        f.selecionada = False
-                    self.selecionadas.clear()
-            
-            self.atualizar_tela()
-            return
-
-        if self.modo == "poligono":
-            self.inserir_no(event)
-            return
-
-        self.objeto_guia = None
+        self.estado_atual.iniciar_clique(event)
 
     def arrastar_mouse(self, event):
-        tela = self.janela_view.quadro_desenho
-        
-        if self.modo == "selecionar" and self.selecionadas:
-            dx = event.x - self.ultimo_x
-            dy = event.y - self.ultimo_y
-            for fig in self.selecionadas:
-                fig.mover(dx, dy)
-            self.ultimo_x = event.x
-            self.ultimo_y = event.y
-            self.atualizar_tela()
-            return
-
-        if self.modo == "livre":
-            tela.create_line(
-                self.ultimo_x, self.ultimo_y, event.x, event.y,
-                fill=self.cor_linha, width=self.grossura, capstyle="round", joinstyle="round"
-            )
-            self.pontos_livre.append((event.x, event.y))
-            self.ultimo_x = event.x
-            self.ultimo_y = event.y
-
-        elif self.modo == "borracha":
-            tela.create_line(
-                self.ultimo_x, self.ultimo_y, event.x, event.y,
-                fill="white", width=self.grossura * 2, capstyle="round", joinstyle="round"
-            )
-            self.pontos_livre.append((event.x, event.y))
-            self.ultimo_x = event.x
-            self.ultimo_y = event.y
-
-        elif self.modo == "retangulo":
-            if self.objeto_guia:
-                tela.delete(self.objeto_guia)
-            self.objeto_guia = tela.create_rectangle(
-                self.x_start, self.y_start, event.x, event.y,
-                outline=self.cor_linha, fill=self.cor_interna, width=self.grossura
-            )
-
-        elif self.modo == "oval":
-            if self.objeto_guia:
-                tela.delete(self.objeto_guia)
-            self.objeto_guia = tela.create_oval(
-                self.x_start, self.y_start, event.x, event.y,
-                outline=self.cor_linha, fill=self.cor_interna, width=self.grossura
-            )
-
-        elif self.modo == "poligono" and self.nos_poligono:
-            if self.objeto_guia:
-                tela.delete(self.objeto_guia)
-            ux, uy = self.nos_poligono[-1]
-            self.objeto_guia = tela.create_line(
-                ux, uy, event.x, event.y,
-                fill=self.cor_linha, width=self.grossura, dash=(4, 2)
-            )
+        self.estado_atual.arrastar_mouse(event)
 
     def soltar_mouse(self, event):
-        tela = self.janela_view.quadro_desenho
-        
-        if self.modo == "livre" and len(self.pontos_livre) > 1:
-            for i in range(len(self.pontos_livre) - 1):
-                xa, ya = self.pontos_livre[i]
-                xb, yb = self.pontos_livre[i+1]
-                obj_traco = Traco(xa, ya, xb, yb, self.cor_linha, self.grossura)
-                self.historico.append(obj_traco)
-            self.pontos_livre = []
+        self.estado_atual.soltar_mouse(event)
 
-        elif self.modo == "borracha" and len(self.pontos_livre) > 1:
-            for i in range(len(self.pontos_livre) - 1):
-                xa, ya = self.pontos_livre[i]
-                xb, yb = self.pontos_livre[i+1]
-                obj_borracha = Raspador(xa, ya, xb, yb, self.grossura * 2)
-                self.historico.append(obj_borracha)
-            self.pontos_livre = []
+    def alternar_modo(self, novo_modo):
+        if novo_modo not in self.estados:
+            raise ValueError(f"Ferramenta desconhecida: {novo_modo}")
+        self.estado_atual.ao_sair()
+        self.estado_atual = self.estados[novo_modo]
+        self.modo = novo_modo
+        self.estado_atual.ao_entrar()
 
-        elif self.modo == "retangulo" and self.objeto_guia:
-            tela.delete(self.objeto_guia)
-            obj_quadro = Quadro(self.x_start, self.y_start, event.x, event.y, self.cor_linha, self.cor_interna, self.grossura)
-            self.historico.append(obj_quadro)
-
-        elif self.modo == "oval" and self.objeto_guia:
-            tela.delete(self.objeto_guia)
-            obj_elipse = Elipse(self.x_start, self.y_start, event.x, event.y, self.cor_linha, self.cor_interna, self.grossura)
-            self.historico.append(obj_elipse)
-
-        self.objeto_guia = None
+    # Operações básicas do desenho.
+    def adicionar_figura(self, figura):
+        self.documento.adicionar(figura)
         self.atualizar_tela()
 
-    def inserir_no(self, event):
+    def figura_no_ponto(self, x, y):
+        for figura in reversed(self.historico):
+            if figura.contem_ponto(x, y):
+                return figura
+        return None
+
+    def selecionar_apenas(self, figura):
+        self.limpar_selecao()
+        figura.definir_selecionada(True)
+        self.selecionadas = [figura]
+
+    def alternar_selecao(self, figura):
+        if figura in self.selecionadas:
+            figura.definir_selecionada(False)
+            self.selecionadas.remove(figura)
+        else:
+            figura.definir_selecionada(True)
+            self.selecionadas.append(figura)
+
+    def limpar_selecao(self):
+        for figura in self.selecionadas:
+            figura.definir_selecionada(False)
+        self.selecionadas.clear()
+
+    def apagar_selecionadas(self):
+        selecionadas = set(self.selecionadas)
+        self.documento.figuras[:] = [figura for figura in self.historico if figura not in selecionadas]
+        self.limpar_selecao()
+        self.atualizar_tela()
+
+    def copiar_selecionadas(self):
+        self.copiadas = [copy.deepcopy(figura) for figura in self.selecionadas]
+
+    def colar_selecionadas(self):
+        if not self.copiadas:
+            return
+        self.limpar_selecao()
+        novas = []
+        for figura_copiada in self.copiadas:
+            nova = copy.deepcopy(figura_copiada)
+            nova.mover(20, 20)
+            nova.definir_selecionada(True)
+            self.documento.adicionar(nova)
+            novas.append(nova)
+        self.selecionadas = novas
+       
+        self.copiadas = [copy.deepcopy(figura) for figura in novas]
+        self.atualizar_tela()
+
+    def trazer_para_frente(self):
+        selecionadas = [figura for figura in self.historico if figura in self.selecionadas]
+        restantes = [figura for figura in self.historico if figura not in self.selecionadas]
+        self.documento.figuras[:] = restantes + selecionadas
+        self.atualizar_tela()
+
+    def mandar_para_tras(self):
+        selecionadas = [figura for figura in self.historico if figura in self.selecionadas]
+        restantes = [figura for figura in self.historico if figura not in self.selecionadas]
+        self.documento.figuras[:] = selecionadas + restantes
+        self.atualizar_tela()
+
+    
+    def agrupar_selecionadas(self):
+        if len(self.selecionadas) < 2:
+            messagebox.showwarning("Agrupar", "Selecione pelo menos duas figuras para agrupar.")
+            return
+
+        indices = [i for i, figura in enumerate(self.historico) if figura in self.selecionadas]
+        figuras_do_grupo = [self.historico[i] for i in indices]
+        indice_insercao = max(indices) - (len(indices) - 1)
+
+        for figura in figuras_do_grupo:
+            figura.definir_selecionada(False)
+        restantes = [figura for figura in self.historico if figura not in figuras_do_grupo]
+        grupo = FiguraComposta(figuras_do_grupo)
+        grupo.definir_selecionada(True)
+        restantes.insert(indice_insercao, grupo)
+
+        self.documento.figuras[:] = restantes
+        self.selecionadas = [grupo]
+        self.atualizar_tela()
+
+    def desagrupar_selecionadas(self):
+        grupos = [figura for figura in self.selecionadas if isinstance(figura, FiguraComposta)]
+        if not grupos:
+            messagebox.showwarning("Desagrupar", "Selecione pelo menos uma figura composta.")
+            return
+
+        novas_selecionadas = []
+        novo_historico = []
+        grupos_set = set(grupos)
+        for figura in self.historico:
+            if figura not in grupos_set:
+                novo_historico.append(figura)
+                continue
+            for componente in figura.figuras:
+                componente.definir_selecionada(True)
+                novo_historico.append(componente)
+                novas_selecionadas.append(componente)
+
+        for figura in self.selecionadas:
+            if figura not in grupos_set:
+                figura.definir_selecionada(True)
+                novas_selecionadas.append(figura)
+
+        self.documento.figuras[:] = novo_historico
+        self.selecionadas = novas_selecionadas
+        self.atualizar_tela()
+
+  
+    def mudar_cor_linha(self):
+        paleta = colorchooser.askcolor(title="Cor do contorno")
+        if not paleta or not paleta[1]:
+            return
+        self.cor_linha = paleta[1]
+        self.janela_view.amostra_borda.config(bg=self.cor_linha)
+        for figura in self.selecionadas:
+            figura.definir_cor_contorno(self.cor_linha)
+        self.atualizar_tela()
+
+    def mudar_cor_interna(self):
+        paleta = colorchooser.askcolor(title="Cor do preenchimento")
+        if not paleta or not paleta[1]:
+            return
+        self.cor_interna = paleta[1]
+        self.janela_view.amostra_interna.config(bg=self.cor_interna)
+        for figura in self.selecionadas:
+            figura.definir_cor_preenchimento(self.cor_interna)
+        self.atualizar_tela()
+
+    def remover_preenchimento(self):
+        self.cor_interna = ""
+        self.janela_view.amostra_interna.config(bg="white")
+        for figura in self.selecionadas:
+            figura.definir_cor_preenchimento("")
+        self.atualizar_tela()
+
+    def alterar_grossura(self, valor):
+        self.grossura = int(float(valor))
+        for figura in self.selecionadas:
+            figura.definir_largura(self.grossura)
+        self.atualizar_tela()
+
+   
+    def apagar_guia(self):
+        if self.objeto_guia is not None and self.janela_view is not None:
+            self.janela_view.quadro_desenho.delete(self.objeto_guia)
+        self.objeto_guia = None
+
+    def inserir_no_poligono(self, x, y):
         tela = self.janela_view.quadro_desenho
-        self.nos_poligono.append((event.x, event.y))
-        d = 3
+        self.nos_poligono.append((x, y))
+        raio = 3
         marcador = tela.create_oval(
-            event.x - d, event.y - d, event.x + d, event.y + d,
-            fill=self.cor_linha, outline=self.cor_linha
+            x - raio,
+            y - raio,
+            x + raio,
+            y + raio,
+            fill=self.cor_linha,
+            outline=self.cor_linha,
         )
         self.graficos_apoio.append(marcador)
         if len(self.nos_poligono) > 1:
             xa, ya = self.nos_poligono[-2]
-            xb, yb = self.nos_poligono[-1]
-            linha_apoio = tela.create_line(xa, ya, xb, yb, fill=self.cor_linha, width=self.grossura)
-            self.graficos_apoio.append(linha_apoio)
+            linha = tela.create_line(xa, ya, x, y, fill=self.cor_linha, width=self.grossura)
+            self.graficos_apoio.append(linha)
 
     def fechar_poligono(self):
-        if len(self.nos_poligono) < 3:
-            messagebox.showwarning("Aviso", "Mínimo de 3 pontos exigidos.")
-            return
-        self.resetar_poligono_rascunho()
-        obj_multiplo = FormatoMultiplo(self.nos_poligono.copy(), self.cor_linha, self.cor_interna, self.grossura)
-        self.historico.append(obj_multiplo)
-        self.atualizar_tela()
+        estado = self.estados["poligono"]
+        estado.fechar()
 
     def resetar_poligono_rascunho(self):
-        tela = self.janela_view.quadro_desenho
-        if self.objeto_guia:
-            tela.delete(self.objeto_guia)
+        if self.janela_view is None:
+            self.nos_poligono = []
+            self.graficos_apoio = []
             self.objeto_guia = None
+            return
+        tela = self.janela_view.quadro_desenho
+        self.apagar_guia()
         for item in self.graficos_apoio:
             tela.delete(item)
         self.nos_poligono = []
         self.graficos_apoio = []
 
-    def alternar_modo(self, novo_modo):
-        if self.modo == "poligono" and novo_modo != "poligono":
-            self.resetar_poligono_rascunho()
-        self.modo = novo_modo
-
-    def mudar_cor_linha(self):
-        paleta = colorchooser.askcolor(title="Cor Externa")
-        if paleta and paleta[1]:
-            self.cor_linha = paleta[1]
-            self.janela_view.amostra_borda.config(bg=self.cor_linha)
-            if self.selecionadas:
-                for fig in self.selecionadas:
-                    fig.tracejado = self.cor_linha
-                self.atualizar_tela()
-
-    def mudar_cor_interna(self):
-        paleta = colorchooser.askcolor(title="Cor Interna")
-        if paleta and paleta[1]:
-            self.cor_interna = paleta[1]
-            self.janela_view.amostra_interna.config(bg=self.cor_interna)
-            if self.selecionadas:
-                for fig in self.selecionadas:
-                    if hasattr(fig, "preenchimento"):
-                        fig.preenchimento = self.cor_interna
-                self.atualizar_tela()
-
-    def remover_preenchimento(self):
-        self.cor_interna = ""
-        self.janela_view.amostra_interna.config(bg="white")
-        if self.selecionadas:
-            for fig in self.selecionadas:
-                if hasattr(fig, "preenchimento"):
-                    fig.preenchimento = ""
-            self.atualizar_tela()
-
-    def alterar_grossura(self, valor):
-        self.grossura = int(valor)
-        if self.selecionadas:
-            for fig in self.selecionadas:
-                fig.largura = self.grossura
-            self.atualizar_tela()
-
     def resetar_painel(self):
-        self.historico.clear()
-        self.selecionadas.clear()
+        self.documento.limpar()
+        self.limpar_selecao()
+        self.copiadas.clear()
         self.resetar_poligono_rascunho()
         self.atualizar_tela()
 
-    def apagar_selecionadas(self):
-        if self.selecionadas:
-            for fig in self.selecionadas:
-                if fig in self.historico:
-                    self.historico.remove(fig)
-            self.selecionadas.clear()
-            self.atualizar_tela()
-
-    def copiar_selecionadas(self):
-        self.copiadas = [copy.deepcopy(fig) for fig in self.selecionadas]
-
-    def colar_selecionadas(self):
-        if self.copiadas:
-            for f in self.selecionadas:
-                f.selecionada = False
-            self.selecionadas.clear()
-            for fig in self.copiadas:
-                nova_fig = copy.deepcopy(fig)
-                nova_fig.mover(20, 20)
-                nova_fig.selecionada = True
-                self.historico.append(nova_fig)
-                self.selecionadas.append(nova_fig)
-            self.copiadas = [copy.deepcopy(fig) for fig in self.selecionadas]
-            self.atualizar_tela()
-
-    def trazer_para_frente(self):
-        for fig in self.selecionadas:
-            if fig in self.historico:
-                self.historico.remove(fig)
-                self.historico.append(fig)
-        self.atualizar_tela()
-
-    def mandar_para_tras(self):
-        for fig in reversed(self.selecionadas):
-            if fig in self.historico:
-                self.historico.remove(fig)
-                self.historico.insert(0, fig)
-        self.atualizar_tela()
-
-    # --- SALVAR O DESENHO EM ARQUIVO ---
+    
     def salvar_desenho_json(self):
-        caminho = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Arquivos JSON", "*.json")])
+        caminho = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Arquivos JSON", "*.json")],
+        )
         if not caminho:
             return
-        
-        dados = []
-        for fig in self.historico:
-            if isinstance(fig, Traco):
-                dados.append({"tipo": "Traco", "xa": fig.xa, "ya": fig.ya, "xb": fig.xb, "yb": fig.yb, "tracejado": fig.tracejado, "largura": fig.largura})
-            elif isinstance(fig, Raspador):
-                dados.append({"tipo": "Raspador", "xa": fig.xa, "ya": fig.ya, "xb": fig.xb, "yb": fig.yb, "largura": fig.largura})
-            elif isinstance(fig, Quadro):
-                dados.append({"tipo": "Quadro", "xa": fig.xa, "ya": fig.ya, "xb": fig.xb, "yb": fig.yb, "tracejado": fig.tracejado, "preenchimento": fig.preenchimento, "largura": fig.largura})
-            elif isinstance(fig, Elipse):
-                dados.append({"tipo": "Elipse", "xa": fig.xa, "ya": fig.ya, "xb": fig.xb, "yb": fig.yb, "tracejado": fig.tracejado, "preenchimento": fig.preenchimento, "largura": fig.largura})
-            elif isinstance(fig, FormatoMultiplo):
-                dados.append({"tipo": "FormatoMultiplo", "vertices": fig.vertices, "tracejado": fig.tracejado, "preenchimento": fig.preenchimento, "largura": fig.largura})
-        
         try:
-            with open(caminho, 'w', encoding='utf-8') as f:
-                json.dump(dados, f, indent=4)
+            self.documento.salvar(caminho)
             messagebox.showinfo("Sucesso", "Projeto salvo em JSON com sucesso!")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao salvar arquivo JSON: {e}")
+        except (OSError, TypeError, ValueError) as erro:
+            messagebox.showerror("Erro", f"Erro ao salvar arquivo JSON: {erro}")
 
-    # --- CARREGAR O DESENHO DO ARQUIVO E EXIBIR IMEDIATAMENTE ---
     def abrir_desenho_json(self):
         caminho = filedialog.askopenfilename(filetypes=[("Arquivos JSON", "*.json")])
         if not caminho:
             return
-        
         try:
-            with open(caminho, 'r', encoding='utf-8') as f:
-                dados = json.load(f)
-            
-            # 1. Limpa o histórico atual e as seleções anteriores
-            self.historico.clear()
-            self.selecionadas.clear()
-            
-            # 2. Reconstrói os objetos geométricos reais na memória
-            for d in dados:
-                tipo = d["tipo"]
-                if tipo == "Traco":
-                    fig = Traco(d["xa"], d["ya"], d["xb"], d["yb"], d["tracejado"], d["largura"])
-                elif tipo == "Raspador":
-                    fig = Raspador(d["xa"], d["ya"], d["xb"], d["yb"], d["largura"])
-                elif tipo == "Quadro":
-                    fig = Quadro(d["xa"], d["ya"], d["xb"], d["yb"], d["tracejado"], d["preenchimento"], d["largura"])
-                elif tipo == "Elipse":
-                    fig = Elipse(d["xa"], d["ya"], d["xb"], d["yb"], d["tracejado"], d["preenchimento"], d["largura"])
-                elif tipo == "FormatoMultiplo":
-                    fig = FormatoMultiplo(d["vertices"], d["tracejado"], d["preenchimento"], d["largura"])
-                
-                self.historico.append(fig)
-            
-            # 3. Força a tela a ser limpa e redesenha todos os objetos lidos do arquivo
+            self.documento = DocumentoDesenho.abrir(caminho)
+            self.limpar_selecao()
+            self.copiadas.clear()
             self.atualizar_tela()
             messagebox.showinfo("Sucesso", "Projeto carregado com sucesso!")
-            
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar o arquivo JSON: {e}")
+        except (OSError, KeyError, TypeError, ValueError) as erro:
+            messagebox.showerror("Erro", f"Erro ao carregar o arquivo JSON: {erro}")
 
-    def salvar_imagem_eps(self):
-        caminho = filedialog.asksaveasfilename(defaultextension=".eps", filetypes=[("Encapsulated PostScript (Imagem)", "*.eps")])
-        if not caminho:
-            return
-        try:
-            self.janela_view.quadro_desenho.postscript(file=caminho, colormode='color')
-            messagebox.showinfo("Sucesso", "Desenho salvo como Imagem (.eps) com sucesso!")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao exportar imagem: {e}")
 
-    # Redesenha todo o histórico geométrico atual no quadro do Canvas
     def atualizar_tela(self):
+        if self.janela_view is None:
+            return
         tela = self.janela_view.quadro_desenho
         tela.delete("all")
-        for fig in self.historico:
-            fig.renderizar(tela)
+        for figura in self.historico:
+            figura.renderizar(tela)
