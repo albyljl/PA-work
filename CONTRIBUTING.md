@@ -1,7 +1,9 @@
-# Divisão de tarefas
+#tarefa 1
+- Albert: criação de funções, implementação do canvas(uso de ia{claude) 
 
-Registre abaixo a participação individual de cada integrante e os respectivos commits.
+#tarefa 2
+- levi: adequação do codigo com ciraçõa e calsses e adiçao da função borracha
 
-## Entrega 6 — OO.Compostas.1
+#tarefa 3
+- marcos: organização do codigo de acordo e aplicação do padrão MVC, definindo a classe visao, modelo e controlador  
 
-- Integrante: implementação realizada / arquivos alterados / hashes dos commits.
